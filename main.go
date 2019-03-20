@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -24,9 +23,6 @@ func main() {
 	framesSrc := flag.String("f", "frames.json", "path of the file containning the animation")
 	sleep := flag.Duration("s", 45*time.Second, "time to sleep between clicks")
 	flag.Parse()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -45,27 +41,28 @@ func main() {
 		}
 		last := len(pointsToClick) - 1
 		if last > 1 && distance(pointsToClick[last], pointsToClick[last-1]) < 25 {
-			pointsToClick = pointsToClick[:last-1]
+			pointsToClick = pointsToClick[:last]
 			break
 		}
 	}
 
 	log.Printf("starting with %d targets", len(pointsToClick))
 
-	wg := new(sync.WaitGroup)
-	wg.Add(2)
+	startTime := time.Now()
+
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	done := make(chan bool, 2)
 
 	logCh := make(chan string)
 	go func() {
-		defer wg.Done()
-
 		render(ctx, *framesSrc, logCh)
+		done <- true
 	}()
 
+	totalClicks := 0
 	go func() {
-		defer wg.Done()
-
-		totalClicks := 0
 		for {
 			for i, p := range pointsToClick {
 				logCh <- fmt.Sprintf("%s moving mouse to point %d [%d,%d]", time.Now().Format("15:04:05"), i+1, p[0], p[1])
@@ -80,6 +77,7 @@ func main() {
 
 				select {
 				case <-ctx.Done():
+					done <- true
 					return
 				case <-time.After(*sleep):
 				}
@@ -89,6 +87,11 @@ func main() {
 
 	<-sigs
 	cancel()
+	for i := 0; i < 2; i++ {
+		<-done
+	}
+	fmt.Print("\x1b[2J\x1b[1;1H")
+	log.Printf("done. %d clicks in %s\n", totalClicks, time.Since(startTime))
 }
 
 func distance(p0, p1 []int) int {
