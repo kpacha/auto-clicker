@@ -129,57 +129,58 @@ func render(ctx context.Context, framesSrc string, in chan string) {
 	var frames [][]string
 	json.Unmarshal(data, &frames)
 
-	// Get TTY size
-	termWidth, termHeight := termSize()
-
-	// Calculate the width in terms of the output char
-	termWidth = termWidth / len(outputChar)
-
-	minRow := 0
-	maxRow := len(frames[0])
-
-	minCol := 0
-	maxCol := len(frames[0][0])
-
-	if maxRow > termHeight {
-		minRow = (maxRow - termHeight) / 2
-		maxRow = minRow + termHeight
-	}
-
-	if maxCol > termWidth {
-		minCol = (maxCol - termWidth) / 2
-		maxCol = minCol + termWidth
-	}
-
 	// Initialize term
 	fmt.Print("\033[H\033[2J\033[?25l")
 
 	logs := make([]string, 3)
 	for {
-		for _, frame := range frames {
-			// Print the next frame
-			for _, line := range frame[minRow:maxRow] {
-				for _, char := range line[minCol:maxCol] {
-					fmt.Printf("\033[48;5;%sm%s", colors[string(char)], outputChar)
+		// Get TTY size
+		termWidth, termHeight := termSize()
+
+		// Calculate the width in terms of the output char
+		termWidth = termWidth / len(outputChar)
+
+		minRow := 0
+		maxRow := len(frames[0])
+
+		minCol := 0
+		maxCol := len(frames[0][0])
+
+		if maxRow > termHeight {
+			minRow = (maxRow - termHeight) / 2
+			maxRow = minRow + termHeight
+		}
+
+		if maxCol > termWidth {
+			minCol = (maxCol - termWidth) / 2
+			maxCol = minCol + termWidth
+		}
+		for i := 0; i < 10; i++ {
+			for _, frame := range frames {
+				// Print the next frame
+				for _, line := range frame[minRow:maxRow] {
+					for _, char := range line[minCol:maxCol] {
+						fmt.Printf("\033[48;5;%sm%s", colors[string(char)], outputChar)
+					}
+					fmt.Println("\033[m")
 				}
-				fmt.Println("\033[m")
-			}
 
-			for _, msg := range logs {
-				fmt.Printf("\033[1;37;17m%s", msg)
-				fmt.Println("\033[m")
-			}
+				for _, msg := range logs {
+					fmt.Printf("\033[1;37;17m%s", msg)
+					fmt.Println("\033[m")
+				}
 
-			// Reset the frame and sleep
-			fmt.Print("\033[H")
-			select {
-			case msg := <-in:
-				logs = append(logs[1:], msg)
-			case <-ctx.Done():
-				return
-			default:
+				// Reset the frame and sleep
+				fmt.Print("\033[H")
+				select {
+				case msg := <-in:
+					logs = append(logs[1:], msg)
+				case <-ctx.Done():
+					return
+				default:
+				}
+				<-time.After(150 * time.Millisecond)
 			}
-			<-time.After(150 * time.Millisecond)
 		}
 	}
 }
